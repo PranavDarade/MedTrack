@@ -33,6 +33,7 @@ h1 {
   color: var(--primary-color);
   text-align: center;
   margin: 0.5rem 0;
+  flex-shrink: 0;
 }
 
 h2 {
@@ -45,8 +46,9 @@ h2 {
   display: flex;
   gap: 2rem;
   flex: 1;
-  min-height: 0; /* Important for nested scrolling */
+  min-height: 0;
   padding: 1rem;
+  overflow: hidden;
 }
 
 .reminder-form {
@@ -54,13 +56,33 @@ h2 {
   padding: 1.5rem;
   border-radius: 8px;
   flex: 0 0 40%;
-  max-height: 100%;
+  height: calc(100vh - 6rem);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
+.reminder-form::-webkit-scrollbar {
+  width: 8px;
+}
+
+.reminder-form::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.reminder-form::-webkit-scrollbar-thumb {
+  background: var(--secondary-color);
+  border-radius: 4px;
+}
+
+.reminder-form::-webkit-scrollbar-thumb:hover {
+  background: #2980b9;
+}
+
 .form-group {
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 label {
@@ -107,7 +129,8 @@ button:active {
   color: white;
   width: 100%;
   font-weight: bold;
-  margin-top: auto;
+  margin-top: 1rem;
+  flex-shrink: 0;
 }
 
 .add-button:hover {
@@ -192,10 +215,18 @@ button:active {
 @media (max-width: 768px) {
   .content-wrapper {
     flex-direction: column;
+    overflow-y: auto;
   }
 
   .reminder-form {
-    flex: 0 0 auto;
+    flex: none;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .reminders-list {
+    max-height: none;
   }
 
   .reminder-item {
@@ -300,4 +331,227 @@ button:active {
   0% { opacity: 1; }
   50% { opacity: 0.5; }
   100% { opacity: 1; }
+}
+
+.file-input {
+  border: 2px dashed #ddd;
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  background-color: #fff;
+}
+
+.file-input:hover {
+  border-color: var(--secondary-color);
+}
+
+.image-preview {
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.image-preview img {
+  max-width: 150px;
+  max-height: 150px;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+}
+
+.medicine-image {
+  width: 100px;
+  height: 100px;
+  margin-right: 1rem;
+  flex-shrink: 0;
+}
+
+.medicine-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+}
+
+.reminder-info {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.reminder-details {
+  flex: 1;
+}
+
+.alternative-medicines {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 2px solid #ddd;
+  flex-shrink: 0;
+}
+
+.alternative-medicines h3 {
+  font-size: min(1.2rem, 2.4vh);
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.alternative-medicine-item {
+  background-color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.alternative-medicine-item .form-group {
+  margin-bottom: 0;
+}
+
+.add-alternative-button {
+  background-color: var(--secondary-color);
+  color: white;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.add-alternative-button:hover {
+  background-color: #2980b9;
+}
+
+.alternatives-info {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+}
+
+.alternatives-info h4 {
+  font-size: min(1.1rem, 2.2vh);
+  color: var(--primary-color);
+  margin: 0 0 0.5rem 0;
+}
+
+.alternatives-info p {
+  margin: 0.2rem 0;
+  color: var(--text-color);
+}
+
+@media (max-width: 768px) {
+  .alternative-medicine-item {
+    grid-template-columns: 1fr;
+  }
+
+  .medicine-image {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 1rem;
+  }
+
+  .reminder-info {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .reminder-details {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+.timing-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.timing-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: min(1rem, 2vh);
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.timing-label input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+  margin: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.reminder-actions .alternatives-textarea {
+  width: 200px;
+  min-height: 60px;
+  max-height: 100px;
+  padding: 0.8rem;
+  margin: 0.5rem 0;
+  border: 2px solid var(--secondary-color);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  resize: vertical;
+  background-color: #f0f7ff;
+  color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(52, 152, 219, 0.1);
+  transition: all 0.3s ease;
+}
+
+.reminder-actions .alternatives-textarea:focus {
+  border-color: var(--secondary-color);
+  outline: none;
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+  background-color: #e8f4ff;
+}
+
+.reminder-actions .alternatives-textarea::placeholder {
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+.reminder-item.active .alternatives-textarea {
+  background-color: #e8fff0;
+  border-color: var(--success-color);
+}
+
+.reminder-item.upcoming .alternatives-textarea {
+  background-color: #f0f7ff;
+  border-color: var(--secondary-color);
+}
+
+@media (max-width: 768px) {
+  .timing-checkboxes {
+    grid-template-columns: 1fr;
+  }
+
+  .reminder-actions .alternatives-textarea {
+    width: 100%;
+    margin: 0.8rem 0;
+  }
+}
+
+input[type="tel"] {
+  width: 100%;
+  padding: 0.6rem;
+  font-size: min(1.1rem, 2.2vh);
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+input[type="tel"]:focus {
+  border-color: var(--secondary-color);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+input[type="tel"]::placeholder {
+  color: #7f8c8d;
+  font-style: italic;
 }

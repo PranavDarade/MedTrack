@@ -1,29 +1,99 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import Home from './components/Home/Home';
+import Login from './components/Auth/Login';
+import Signup from './components/Auth/Signup';
+import Dashboard from './components/Dashboard/Dashboard';
 import './App.css';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error:', error);
+    console.error('Error Info:', errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div>Something went wrong. Please refresh the page.</div>;
+    }
+    return this.props.children;
+  }
+}
+
+const ProtectedRoute = ({ children, user }) => {
+  const location = useLocation();
+  
+  if (!user) {
+    return <Navigate to="/auth" state={{ from: location }} replace />;
+  }
+
+  return children;
+};
+
+const AuthRoute = ({ children, user }) => {
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
+
 function App() {
+  const MEDICINE_TIMINGS = [
+    'Before Breakfast',
+    'After Breakfast',
+    'Before Lunch',
+    'After Lunch',
+    'Before Dinner',
+    'After Dinner'
+  ];
+
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  const [authView, setAuthView] = useState('login'); // 'login' or 'signup'
+
   const [reminders, setReminders] = useState(() => {
-    const saved = localStorage.getItem('medicineReminders');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('medicineReminders');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('Error loading reminders:', error);
+      return [];
+    }
   });
   const [newReminder, setNewReminder] = useState({
     medicineName: '',
     time: '',
     frequency: 'daily',
     lastTriggered: null,
-    stock: 0,
-    pillsPerDose: 1
+    stock: '',
+    pillsPerDose: '',
+    medicineImage: null,
+    guardianPhone: '',
+    alternativeMedicines: [],
+    timings: []
   });
   const [permission, setPermission] = useState('default');
 
-  // Request notification permission on component mount
   useEffect(() => {
-    if ('Notification' in window) {
-      Notification.requestPermission().then(perm => {
-        setPermission(perm);
-      });
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     localStorage.setItem('medicineReminders', JSON.stringify(reminders));
@@ -71,24 +141,36 @@ function App() {
   const triggerReminder = (reminder) => {
     // Show notification
     if (permission === 'granted') {
-      const notification = new Notification('Medicine Reminder', {
-        body: `Time to take your ${reminder.medicineName} (${reminder.stock} pills remaining)`,
-        icon: '/medicine-icon.png',
-        silent: false
-      });
+      try {
+        const notification = new Notification('Medicine Reminder', {
+          body: `Time to take your ${reminder.medicineName} (${reminder.stock} pills remaining)`,
+          icon: '/vite.svg', // Using vite.svg as fallback
+          silent: false
+        });
 
-      notification.onclick = () => {
-        window.focus();
-        notification.close();
-      };
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      } catch (error) {
+        console.error('Notification error:', error);
+      }
     }
 
     // Play voice reminder
-    speak(`Time to take your ${reminder.medicineName}. You have ${reminder.stock} pills remaining.`);
+    try {
+      speak(`Time to take your ${reminder.medicineName}. You have ${reminder.stock} pills remaining.`);
+    } catch (error) {
+      console.error('Speech synthesis error:', error);
+    }
 
     // Play a gentle alert sound
-    const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
-    audio.play().catch(e => console.log('Audio play failed:', e));
+    try {
+      const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+      audio.play().catch(e => console.log('Audio play failed:', e));
+    } catch (error) {
+      console.error('Audio play error:', error);
+    }
   };
 
   const speak = (text) => {
@@ -112,28 +194,116 @@ function App() {
     }, 3000);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!newReminder.medicineName || !newReminder.time || !newReminder.stock || !newReminder.pillsPerDose) return;
-    
-    const reminder = {
-      ...newReminder,
-      lastTriggered: null,
-      stock: parseInt(newReminder.stock),
-      pillsPerDose: parseInt(newReminder.pillsPerDose)
-    };
-    
-    setReminders([...reminders, reminder]);
-    setNewReminder({
-      medicineName: '',
-      time: '',
-      frequency: 'daily',
-      lastTriggered: null,
-      stock: 0,
-      pillsPerDose: 1
-    });
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewReminder(prev => ({
+          ...prev,
+          medicineImage: reader.result
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
-    speak(`Reminder set for ${newReminder.medicineName} at ${formatTime(newReminder.time)}. Initial stock is ${newReminder.stock} pills`);
+  const addAlternativeMedicine = () => {
+    setNewReminder(prev => ({
+      ...prev,
+      alternativeMedicines: [
+        ...(prev.alternativeMedicines || []),
+        { name: '', stock: 0, pillsPerDose: 1 }
+      ]
+    }));
+  };
+
+  const updateAlternativeMedicine = (index, field, value) => {
+    setNewReminder(prev => ({
+      ...prev,
+      alternativeMedicines: (prev.alternativeMedicines || []).map((med, i) => 
+        i === index ? { ...med, [field]: field === 'stock' || field === 'pillsPerDose' ? parseInt(value) || 0 : value } : med
+      )
+    }));
+  };
+
+  const removeAlternativeMedicine = (index) => {
+    setNewReminder(prev => ({
+      ...prev,
+      alternativeMedicines: (prev.alternativeMedicines || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleTimingChange = (timing) => {
+    setNewReminder(prev => ({
+      ...prev,
+      timings: prev.timings.includes(timing)
+        ? prev.timings.filter(t => t !== timing)
+        : [...prev.timings, timing]
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!newReminder.medicineName || !newReminder.time || !newReminder.stock || !newReminder.pillsPerDose || (newReminder.timings || []).length === 0 || !newReminder.guardianPhone) {
+      alert('Please fill in all required fields and select at least one timing');
+      return;
+    }
+
+    // Ensure phone number has country code
+    const guardianPhone = newReminder.guardianPhone.startsWith('+') 
+      ? newReminder.guardianPhone 
+      : `+${newReminder.guardianPhone}`;
+
+    const reminder = {
+      id: Date.now(),
+      ...newReminder,
+      guardianPhone,
+      stock: parseInt(newReminder.stock),
+      pillsPerDose: parseInt(newReminder.pillsPerDose),
+      active: false,
+      upcoming: false
+    };
+
+    try {
+      // Set up the reminder timer with Twilio
+      const response = await fetch('http://localhost:5001/api/reminders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reminderId: reminder.id,
+          medicineName: reminder.medicineName,
+          guardianPhone: reminder.guardianPhone,
+          time: reminder.time
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to set up reminder timer');
+      }
+
+      // If timer setup was successful, add to local state
+      setReminders([...reminders, reminder]);
+      speak(`Reminder set for ${reminder.medicineName} at ${formatTime(reminder.time)}. Take ${(reminder.timings || []).join(', ')}. Initial stock is ${reminder.stock} pills`);
+      
+      setNewReminder({
+        medicineName: '',
+        time: '',
+        stock: '',
+        pillsPerDose: '',
+        image: null,
+        timings: [],
+        guardianPhone: '',
+        alternativeMedicines: []
+      });
+
+    } catch (error) {
+      console.error('Error setting up reminder:', error);
+      alert('Failed to set up reminder timer. Please try again.');
+    }
   };
 
   const formatTime = (time) => {
@@ -162,32 +332,56 @@ function App() {
     speak(`Time to take your ${medicineName}`);
   };
 
-  const markAsTaken = (index) => {
-    const updatedReminders = reminders.map((reminder, i) => {
-      if (i === index) {
-        const newStock = reminder.stock - reminder.pillsPerDose;
-        const updatedReminder = {
-          ...reminder,
-          stock: newStock
-        };
-        
-        // Announce the remaining stock
-        speak(`Marked ${reminder.medicineName} as taken. ${newStock} pills remaining.`);
-        
-        // Show low stock warning if less than 5 days worth of pills remaining
-        if (newStock <= reminder.pillsPerDose * 5) {
-          const notification = new Notification('Low Medicine Stock', {
-            body: `Only ${newStock} pills remaining for ${reminder.medicineName}. Please refill soon.`,
-            icon: '/medicine-icon.png'
-          });
-        }
-        
-        return updatedReminder;
+  const markAsTaken = async (index) => {
+    try {
+      // Cancel the timer in backend
+      const response = await fetch(`http://localhost:5001/api/reminders/${reminders[index].id}/taken`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel reminder timer');
       }
-      return reminder;
-    });
-    
-    setReminders(updatedReminders);
+
+      // Update reminder stock
+      const updatedReminders = reminders.map((reminder, i) => {
+        if (i === index) {
+          const newStock = reminder.stock - reminder.pillsPerDose;
+          const updatedReminder = {
+            ...reminder,
+            stock: newStock
+          };
+          
+          // Announce the remaining stock
+          if (newStock <= 0) {
+            const availableAlternative = (reminder.alternativeMedicines || []).find(alt => alt.stock > 0);
+            if (availableAlternative) {
+              speak(`${reminder.medicineName} is out of stock. You can take ${availableAlternative.name} as an alternative. ${availableAlternative.stock} pills remaining.`);
+            } else {
+              speak(`${reminder.medicineName} is out of stock. No alternatives available. Please refill soon.`);
+            }
+          } else {
+            speak(`Marked ${reminder.medicineName} as taken. ${newStock} pills remaining.`);
+          }
+          
+          // Show low stock warning
+          if (newStock <= reminder.pillsPerDose * 5) {
+            const notification = new Notification('Low Medicine Stock', {
+              body: `Only ${newStock} pills remaining for ${reminder.medicineName}. Please refill soon.`,
+              icon: '/medicine-icon.png'
+            });
+          }
+          
+          return updatedReminder;
+        }
+        return reminder;
+      });
+      
+      setReminders(updatedReminders);
+    } catch (error) {
+      console.error('Error marking reminder as taken:', error);
+      alert('Failed to mark reminder as taken. Please try again.');
+    }
   };
 
   const updateStock = (index, newStock) => {
@@ -218,121 +412,65 @@ function App() {
     return 'normal';
   };
 
+  const handleLogin = (userData) => {
+    setUser(userData);
+  };
+
+  const handleSignup = (userData) => {
+    setUser(userData);
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('token');
+  };
+
+  const handleGetStarted = () => {
+    setAuthView('signup');
+  };
+
   return (
-    <div className="app-container">
-      <h1>Medicine Voice Reminder</h1>
-      
-      <div className="content-wrapper">
-        <form onSubmit={handleSubmit} className="reminder-form">
-          <div className="form-group">
-            <label htmlFor="medicineName">Medicine Name:</label>
-            <input
-              type="text"
-              id="medicineName"
-              value={newReminder.medicineName}
-              onChange={(e) => setNewReminder({...newReminder, medicineName: e.target.value})}
-              placeholder="Enter medicine name"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="time">Time:</label>
-            <input
-              type="time"
-              id="time"
-              value={newReminder.time}
-              onChange={(e) => setNewReminder({...newReminder, time: e.target.value})}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="stock">Number of Pills in Stock:</label>
-            <input
-              type="number"
-              id="stock"
-              min="0"
-              value={newReminder.stock}
-              onChange={(e) => setNewReminder({...newReminder, stock: e.target.value})}
-              placeholder="Enter number of pills"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="pillsPerDose">Pills Per Dose:</label>
-            <input
-              type="number"
-              id="pillsPerDose"
-              min="1"
-              value={newReminder.pillsPerDose}
-              onChange={(e) => setNewReminder({...newReminder, pillsPerDose: e.target.value})}
-              placeholder="Pills to take each time"
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="frequency">Frequency:</label>
-            <select
-              id="frequency"
-              value={newReminder.frequency}
-              onChange={(e) => setNewReminder({...newReminder, frequency: e.target.value})}
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
-
-          <button type="submit" className="add-button">Add Reminder</button>
-        </form>
-
-        <div className="reminders-list">
-          <h2>Your Reminders</h2>
-          {reminders.length === 0 ? (
-            <p>No reminders set yet.</p>
-          ) : (
-            reminders.map((reminder, index) => (
-              <div 
-                key={index} 
-                className={`reminder-item ${getTimeStatus(reminder)}`}
-              >
-                <div className="reminder-info">
-                  <h3>{reminder.medicineName}</h3>
-                  <p>Time: {formatTime(reminder.time)}</p>
-                  <p>Frequency: {reminder.frequency}</p>
-                  <p className={`stock-info ${reminder.stock <= reminder.pillsPerDose * 5 ? 'low-stock' : ''}`}>
-                    Stock: {reminder.stock} pills
-                    {reminder.stock <= reminder.pillsPerDose * 5 && 
-                      <span className="low-stock-warning"> (Low Stock!)</span>
-                    }
-                  </p>
-                  <p>Pills per dose: {reminder.pillsPerDose}</p>
-                </div>
-                <div className="reminder-actions">
-                  <button onClick={() => markAsTaken(index)} className="taken-button">
-                    Mark as Taken
-                  </button>
-                  <button onClick={() => testVoice(reminder.medicineName)} className="test-button">
-                    Test Voice
-                  </button>
-                  <div className="stock-update">
-                    <input
-                      type="number"
-                      min="0"
-                      value={reminder.stock}
-                      onChange={(e) => updateStock(index, e.target.value)}
-                      className="stock-input"
-                    />
-                  </div>
-                  <button onClick={() => deleteReminder(index)} className="delete-button">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+    <ErrorBoundary>
+      <Router>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <AuthRoute user={user}>
+                <Home onGetStarted={handleGetStarted} />
+              </AuthRoute>
+            }
+          />
+          <Route
+            path="/auth"
+            element={
+              <AuthRoute user={user}>
+                {authView === 'login' ? (
+                  <Login
+                    onLogin={handleLogin}
+                    onSwitchToSignup={() => setAuthView('signup')}
+                  />
+                ) : (
+                  <Signup
+                    onSignup={handleSignup}
+                    onSwitchToLogin={() => setAuthView('login')}
+                  />
+                )}
+              </AuthRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute user={user}>
+                <Dashboard user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
