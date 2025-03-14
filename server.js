@@ -115,6 +115,7 @@ try {
 
 // Store active reminders and their timers
 const activeReminders = new Map();
+const allReminders = new Map();  // Store all reminders, even after they're taken
 
 // Test endpoint to verify SMS functionality
 app.post('/api/test-sms', async (req, res) => {
@@ -246,9 +247,24 @@ app.post('/api/reminders', (req, res) => {
     reminderId,
     medicineName,
     guardianPhone,
-    time
+    time,
+    type: typeof reminderId
   });
   
+  if (!reminderId) {
+    console.error('Missing reminder ID');
+    return res.status(400).json({ message: 'Missing reminder ID' });
+  }
+
+  // Store in allReminders first
+  allReminders.set(reminderId, {
+    medicineName,
+    guardianPhone,
+    time,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  });
+
   // Validate phone number format
   if (!guardianPhone.startsWith('+')) {
     console.error('Invalid phone number format:', guardianPhone);
@@ -321,25 +337,31 @@ app.post('/api/reminders', (req, res) => {
       console.log('Removing reminder from active reminders:', reminderId);
       activeReminders.delete(reminderId);
     }
-  }, 10000);
+  }, TIMER_DURATION);
 
-  // Store timer info
+  // Store timer info with additional debug info
   activeReminders.set(reminderId, {
-    timerRef,
+    timer: timerRef.timer,
     medicineName,
     guardianPhone,
     time,
     startTime: new Date().toLocaleTimeString(),
-    scheduledTime: new Date(Date.now() + TIMER_DURATION).toLocaleTimeString()
+    scheduledTime: new Date(Date.now() + TIMER_DURATION).toLocaleTimeString(),
+    debug: {
+      timerDuration: TIMER_DURATION,
+      reminderId: reminderId,
+      reminderIdType: typeof reminderId
+    }
   });
 
-  console.log('Active reminders:', {
+  console.log('Active reminders after setting:', {
     count: activeReminders.size,
     reminders: Array.from(activeReminders.entries()).map(([id, data]) => ({
       id,
       medicineName: data.medicineName,
       startTime: data.startTime,
-      scheduledTime: data.scheduledTime
+      scheduledTime: data.scheduledTime,
+      debug: data.debug
     }))
   });
 
@@ -358,17 +380,59 @@ app.post('/api/reminders/:reminderId/taken', (req, res) => {
   const { reminderId } = req.params;
   
   console.log('Attempting to mark reminder as taken:', reminderId);
+  console.log('Active reminders:', Array.from(activeReminders.keys()));
+  console.log('All reminders:', Array.from(allReminders.keys()));
   
-  if (activeReminders.has(reminderId)) {
-    console.log('Cancelling timer for reminder:', reminderId);
-    clearTimeout(activeReminders.get(reminderId).timer);
-    activeReminders.delete(reminderId);
-    console.log('Timer cancelled successfully');
-    res.json({ message: 'Reminder timer cancelled successfully' });
-  } else {
-    console.log('Reminder not found:', reminderId);
-    res.status(404).json({ message: 'Reminder not found' });
+  if (!reminderId) {
+    console.error('Invalid reminder ID provided');
+    return res.status(400).json({ message: 'Invalid reminder ID' });
   }
+
+  // Check if reminder exists in allReminders
+  if (!allReminders.has(reminderId)) {
+    console.log('Reminder not found in all reminders');
+    return res.status(404).json({ 
+      message: 'Reminder not found',
+      reminderId: reminderId
+    });
+  }
+
+  // Update reminder status
+  const reminderData = allReminders.get(reminderId);
+  reminderData.status = 'taken';
+  reminderData.takenAt = new Date().toISOString();
+  allReminders.set(reminderId, reminderData);
+
+  // If reminder is still active, cancel its timer
+  if (activeReminders.has(reminderId)) {
+    try {
+      console.log('Found active reminder, cancelling timer:', reminderId);
+      const activeReminderData = activeReminders.get(reminderId);
+      clearTimeout(activeReminderData.timer);
+      activeReminders.delete(reminderId);
+      console.log('Timer cancelled successfully');
+    } catch (error) {
+      console.error('Error while cancelling timer:', error);
+      // Continue processing even if timer cancellation fails
+    }
+  }
+
+  console.log('Reminder marked as taken successfully');
+  res.json({ 
+    message: 'Reminder marked as taken successfully',
+    reminderId: reminderId,
+    status: 'taken',
+    takenAt: reminderData.takenAt
+  });
+});
+
+// New endpoint to get all reminders
+app.get('/api/reminders', (req, res) => {
+  const remindersArray = Array.from(allReminders.entries()).map(([id, data]) => ({
+    id,
+    ...data
+  }));
+  res.json(remindersArray);
 });
 
 const PORT = process.env.PORT || 5001;

@@ -179,8 +179,10 @@ const Dashboard = ({ user, onLogout }) => {
       return;
     }
 
+    const reminderId = Date.now().toString(); // Convert to string for consistency
+
     const reminder = {
-      id: Date.now(),
+      id: reminderId,
       ...newReminder,
       guardianPhone: user.guardianPhone,
       stock: parseInt(newReminder.stock),
@@ -190,6 +192,12 @@ const Dashboard = ({ user, onLogout }) => {
     };
 
     try {
+      console.log('Setting up reminder:', {
+        id: reminderId,
+        type: typeof reminderId,
+        name: reminder.medicineName
+      });
+
       // Set up the reminder timer with Twilio
       const response = await fetch('http://localhost:5001/api/reminders', {
         method: 'POST',
@@ -197,7 +205,7 @@ const Dashboard = ({ user, onLogout }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          reminderId: reminder.id,
+          reminderId: reminderId,
           medicineName: reminder.medicineName,
           guardianPhone: user.guardianPhone,
           time: reminder.time
@@ -264,41 +272,43 @@ const Dashboard = ({ user, onLogout }) => {
   const markAsTaken = async (index) => {
     try {
       const reminder = reminders[index];
-      if (!reminder) {
-        throw new Error('Reminder not found');
+      if (!reminder || !reminder.id) {
+        throw new Error('Invalid reminder or missing ID');
       }
 
-      // Calculate new stock before API call
-      const newStock = reminder.stock - reminder.pillsPerDose;
-      if (newStock < 0) {
-        alert('Not enough pills in stock!');
-        return;
-      }
+      console.log('Marking reminder as taken:', {
+        id: reminder.id,
+        type: typeof reminder.id,
+        name: reminder.medicineName
+      });
 
       // Cancel the timer in backend
       const response = await fetch(`http://localhost:5001/api/reminders/${reminder.id}/taken`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          newStock: newStock,
-          pillsTaken: reminder.pillsPerDose
-        })
+          'Content-Type': 'application/json'
+        }
       });
 
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to mark reminder as taken');
+        console.error('Server response:', responseData);
+        throw new Error(responseData.message || 'Failed to mark reminder as taken');
       }
 
-      // Update reminder stock
+      // Update reminder stock and status
       const updatedReminders = reminders.map((r, i) => {
         if (i === index) {
+          const newStock = r.stock - r.pillsPerDose;
+          if (newStock < 0) {
+            throw new Error('Not enough pills in stock');
+          }
           const updatedReminder = {
             ...r,
             stock: newStock,
-            lastTaken: new Date().toISOString()
+            lastTaken: new Date().toISOString(),
+            status: 'taken'
           };
           
           // Handle low stock notifications
@@ -309,24 +319,8 @@ const Dashboard = ({ user, onLogout }) => {
             } else {
               speak(`${r.medicineName} is out of stock. No alternatives available. Please refill soon.`);
             }
-
-            // Show out of stock notification
-            if ('Notification' in window && permission === 'granted') {
-              new Notification('Medicine Out of Stock', {
-                body: `${r.medicineName} is out of stock. Please refill soon.`,
-                icon: '/medicine-icon.png'
-              });
-            }
           } else {
             speak(`Marked ${r.medicineName} as taken. ${newStock} pills remaining.`);
-            
-            // Show low stock notification
-            if (newStock <= r.pillsPerDose * 5 && 'Notification' in window && permission === 'granted') {
-              new Notification('Low Medicine Stock', {
-                body: `Only ${newStock} pills remaining for ${r.medicineName}. Please refill soon.`,
-                icon: '/medicine-icon.png'
-              });
-            }
           }
           
           return updatedReminder;
@@ -479,6 +473,62 @@ const Dashboard = ({ user, onLogout }) => {
               />
             </div>
 
+            <div className="form-group">
+              <label>Alternative Medicines:</label>
+              <div className="alternative-medicines">
+                {newReminder.alternativeMedicines.map((alt, index) => (
+                  <div key={index} className="alternative-medicine-item">
+                    <input
+                      type="text"
+                      value={alt.name}
+                      onChange={(e) => {
+                        const updated = [...newReminder.alternativeMedicines];
+                        updated[index] = { ...alt, name: e.target.value };
+                        setNewReminder({...newReminder, alternativeMedicines: updated});
+                      }}
+                      placeholder="Medicine name"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      value={alt.stock}
+                      onChange={(e) => {
+                        const updated = [...newReminder.alternativeMedicines];
+                        updated[index] = { ...alt, stock: parseInt(e.target.value) || 0 };
+                        setNewReminder({...newReminder, alternativeMedicines: updated});
+                      }}
+                      placeholder="Stock"
+                    />
+                    <button
+                      type="button"
+                      className="remove-alternative"
+                      onClick={() => {
+                        const updated = newReminder.alternativeMedicines.filter((_, i) => i !== index);
+                        setNewReminder({...newReminder, alternativeMedicines: updated});
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="add-alternative"
+                  onClick={() => {
+                    setNewReminder({
+                      ...newReminder,
+                      alternativeMedicines: [
+                        ...newReminder.alternativeMedicines,
+                        { name: '', stock: 0 }
+                      ]
+                    });
+                  }}
+                >
+                  + Add Alternative Medicine
+                </button>
+              </div>
+            </div>
+
             <button type="submit" className="add-button">Add Reminder</button>
           </form>
         </div>
@@ -502,16 +552,72 @@ const Dashboard = ({ user, onLogout }) => {
                     />
                   )}
                   <div className="reminder-details">
-                    <h3>{reminder.medicineName}</h3>
-                    <p>Time: {formatTime(reminder.time)}</p>
-                    <p>Take: {(reminder.timings || []).join(', ')}</p>
-                    <p className={`stock-info ${reminder.stock <= reminder.pillsPerDose * 5 ? 'low-stock' : ''}`}>
-                      Stock: {reminder.stock} pills
-                      {reminder.stock <= reminder.pillsPerDose * 5 && 
-                        <span className="low-stock-warning"> (Low Stock!)</span>
-                      }
-                    </p>
-                    <p>Pills per dose: {reminder.pillsPerDose}</p>
+                    <div className="reminder-main-info">
+                      <h3>{reminder.medicineName}</h3>
+                      <p className="reminder-time">Time: {formatTime(reminder.time)}</p>
+                      <p className="reminder-timing">Take: {(reminder.timings || []).join(', ')}</p>
+                      <p className={`stock-info ${reminder.stock <= reminder.pillsPerDose * 5 ? 'low-stock' : ''}`}>
+                        Stock: {reminder.stock} pills
+                        {reminder.stock <= reminder.pillsPerDose * 5 && 
+                          <span className="low-stock-warning"> (Low Stock!)</span>
+                        }
+                      </p>
+                      <p className="pills-per-dose">Pills per dose: {reminder.pillsPerDose}</p>
+                    </div>
+                    
+                    {reminder.alternativeMedicines && reminder.alternativeMedicines.length > 0 && (
+                      <div className="alternatives-section">
+                        <div className="alternatives-header">
+                          <h4>Alternative Medicines</h4>
+                          <span className="alternatives-count">
+                            {reminder.alternativeMedicines.length} available
+                          </span>
+                        </div>
+                        <div className="alternatives-list">
+                          {reminder.alternativeMedicines.map((alt, altIndex) => (
+                            <div key={altIndex} className="alternative-item">
+                              <div className="alt-info">
+                                <span className="alt-name">💊 {alt.name}</span>
+                                <div className={`alt-stock-badge ${alt.stock <= 5 ? 'low' : 'normal'}`}>
+                                  {alt.stock} pills
+                                </div>
+                              </div>
+                              <button 
+                                className="switch-to-alt"
+                                onClick={() => {
+                                  const updatedReminders = reminders.map((r, i) => {
+                                    if (i === index) {
+                                      // Store current medicine as alternative
+                                      const currentMed = {
+                                        name: r.medicineName,
+                                        stock: r.stock
+                                      };
+                                      // Filter out the selected alternative
+                                      const updatedAlternatives = r.alternativeMedicines
+                                        .filter((_, i) => i !== altIndex)
+                                        .concat([currentMed]);
+                                      
+                                      return {
+                                        ...r,
+                                        medicineName: alt.name,
+                                        stock: alt.stock,
+                                        alternativeMedicines: updatedAlternatives
+                                      };
+                                    }
+                                    return r;
+                                  });
+                                  setReminders(updatedReminders);
+                                  localStorage.setItem('medicineReminders', JSON.stringify(updatedReminders));
+                                  speak(`Switched to alternative medicine: ${alt.name}`);
+                                }}
+                              >
+                                Switch to this
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="reminder-actions">
