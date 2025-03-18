@@ -1,14 +1,29 @@
 # MedTrack
-Medical Adherence WebApplication for elderly people which will remind them for their medicine dosage with an speech reminders and if the patient were likely to miss his medicine reminders a sms will be sent to his/her guardian for it.
 
+Medical Adherence WebApplication for elderly people that will remind them to take their medicine dosages with speech reminders. If the patient is likely to miss their medicine reminders, an SMS will be sent to their guardian.
 
+## Features
 
-To run the project install all the dependencies by using this command
+- Speech reminders for medicine dosage
+- SMS notifications to guardians
+- User-friendly interface
+
+## Installation
+
+To run the project, install all the dependencies using the following command:
+
+```sh
 npm install
+```
 
-Then create a .env file and add 
-WILIO_ACCOUNT_SID:
-TWILIO_AUTH_TOKEN: 
-TWILIO_PHONE_NUMBER: 
+## Server
 
-Then start the server in a seperate terminal and run the react dev in seperate terminal
+# Start the server
+```sh
+npm start
+```
+
+# Start the React development server
+```sh
+npm run dev
+```
